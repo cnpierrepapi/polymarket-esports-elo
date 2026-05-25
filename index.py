@@ -22,15 +22,30 @@ _engine = None
 _engine_info = {}
 
 def get_engine():
+    """
+    Load engine with a FAST cold start for Vercel serverless.
+    Fetches only 5 pages (~400 matches) initially — enough for recent Elo.
+    The /api/refresh cron fills in more history over time.
+    """
     global _engine, _engine_info
     if _engine is None:
-        _engine = load_or_fetch("lol", force=False)
-        _engine_info = {
-            "teams": len(_engine.teams),
-            "matches": _engine.matches_processed,
-            "game": "lol",
-            "last_refresh": datetime.now(timezone.utc).isoformat(),
-        }
+        try:
+            from engine import fetch_lol_history, build_engine_from_matches
+            # Fast cold start: only 5 pages = ~400 matches
+            matches = fetch_lol_history(pages=5)
+            _engine = build_engine_from_matches(matches, "lol")
+            _engine_info = {
+                "teams": len(_engine.teams),
+                "matches": _engine.matches_processed,
+                "game": "lol",
+                "last_refresh": datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception as e:
+            # Fallback: create empty engine
+            _engine = EloEngine("lol")
+            _engine_info = {"teams": 0, "matches": 0, "game": "lol",
+                            "error": str(e),
+                            "last_refresh": datetime.now(timezone.utc).isoformat()}
     return _engine
 
 
@@ -52,7 +67,8 @@ async def refresh():
     """Called by Vercel cron every 60 minutes to update Elo with new results."""
     global _engine, _engine_info
     try:
-        matches = fetch_lol_history(pages=5)  # last ~400 matches (recent results only)
+        engine = get_engine()  # ensure engine exists
+        matches = fetch_lol_history(pages=3)  # last ~240 matches
         if matches and _engine:
             # Ingest new completed matches into existing engine
             existing_dates = set()
@@ -104,14 +120,20 @@ async def predict(
 @app.get("/api/upcoming")
 async def upcoming():
     engine = get_engine()
-    matches = fetch_lol_upcoming()
+    try:
+        matches = fetch_lol_upcoming()
+    except Exception:
+        matches = []
     results = []
     for u in matches:
         a_id = engine.find_team(u["team_a"])
         b_id = engine.find_team(u["team_b"])
         pred = None
         if a_id and b_id:
-            pred = engine.predict(a_id, b_id, u["bo"])
+            try:
+                pred = engine.predict(a_id, b_id, u["bo"])
+            except Exception:
+                pass
         results.append({
             **u,
             "model_a": pred["p_a"] if pred else None,
