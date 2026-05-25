@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.py" }
+  ],
+  "crons": [
+    { "path": "/api/health", "schedule": "*/5 * * * *" },
+    { "path": "/api/refresh", "schedule": "0 * * * *" }
+  ]
+}

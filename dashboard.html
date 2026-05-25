@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Esports Elo Edge Engine</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0f;--s1:#12121a;--s2:#1a1a28;--brd:#2a2a3a;--txt:#e0e0e8;--dim:#8888aa;
+--acc:#00e676;--red:#ff5252;--yel:#ffd740;--cyan:#18ffff;--pink:#ff2d7b;--purp:#b388ff}
+body{background:var(--bg);color:var(--txt);font-family:'JetBrains Mono','SF Mono',monospace;font-size:13px;line-height:1.5}
+.c{max-width:1100px;margin:0 auto;padding:20px}
+.hdr{border-bottom:2px solid var(--purp);padding:16px 0 12px;margin-bottom:20px}
+.hdr h1{font-size:18px;color:var(--purp);letter-spacing:2px;text-transform:uppercase}
+.hdr .sub{color:var(--dim);font-size:11px;margin-top:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.panel{background:var(--s1);border:1px solid var(--brd);border-radius:6px;padding:16px;margin-bottom:16px}
+.panel.full{grid-column:1/-1}
+.panel-t{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--purp);margin-bottom:10px;border-bottom:1px solid var(--brd);padding-bottom:6px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:6px;border-bottom:1px solid var(--brd)}
+td{padding:5px 6px;border-bottom:1px solid #1a1a24}
+input,select{background:var(--s2);border:1px solid var(--brd);color:var(--txt);padding:6px 10px;border-radius:4px;font-family:inherit;font-size:12px;width:100%}
+input:focus,select:focus{border-color:var(--purp);outline:none}
+button{background:var(--purp);color:#fff;border:none;padding:8px 18px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:bold;width:100%}
+button:hover{opacity:0.85}
+button.sec{background:var(--s2);color:var(--txt);border:1px solid var(--brd)}
+.stat{display:inline-block;background:var(--s2);border-radius:4px;padding:10px 16px;margin:4px;text-align:center}
+.stat .v{font-size:22px;font-weight:bold;color:var(--cyan)}
+.stat .l{font-size:9px;color:var(--dim);text-transform:uppercase;margin-top:2px}
+.buy{color:var(--acc);font-weight:bold}.manski{color:var(--yel);font-weight:bold}.pass{color:var(--dim)}
+.edge-pos{color:var(--acc)}.edge-neg{color:var(--red)}
+.signal-box{border-radius:6px;padding:14px;margin-top:12px;text-align:center;font-size:16px;font-weight:bold}
+.signal-buy{background:#0a2a0a;border:2px solid var(--acc);color:var(--acc)}
+.signal-pass{background:var(--s2);border:2px solid var(--brd);color:var(--dim)}
+.signal-manski{background:#2a2000;border:2px solid var(--yel);color:var(--yel)}
+.live{color:var(--acc);font-weight:bold;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.warn{background:#2a2000;border:1px solid var(--yel);border-radius:4px;padding:10px;margin-top:10px;font-size:11px;color:var(--yel)}
+.search-results{max-height:150px;overflow-y:auto;background:var(--s2);border:1px solid var(--brd);border-radius:4px;display:none;position:absolute;width:calc(100% - 32px);z-index:10}
+.search-results div{padding:6px 10px;cursor:pointer;font-size:11px}
+.search-results div:hover{background:var(--brd)}
+.footer{margin-top:24px;padding-top:12px;border-top:1px solid var(--brd);font-size:10px;color:var(--dim);text-align:center}
+.footer a{color:var(--purp);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="c">
+<div class="hdr">
+<h1>Esports Elo Edge Engine</h1>
+<div class="sub">Weighted Elo [Glickman 1999, Angelini 2021] | Platt Calibration | BO Format Correction | Manski Filter | Auto-refresh 60min</div>
+<div class="sub" id="engine-info" style="margin-top:4px;color:var(--cyan)">Loading...</div>
+</div>
+
+<!-- Upcoming Matches -->
+<div class="panel full">
+<div class="panel-t">Live & Upcoming Matches (from Riot LoL Esports API)</div>
+<button class="sec" onclick="loadUpcoming()" id="up-btn" style="width:auto;padding:6px 14px;margin-bottom:10px">Refresh Matches</button>
+<div id="upcoming" style="max-height:400px;overflow-y:auto"><span style="color:var(--yel)">Loading...</span></div>
+</div>
+
+<!-- Predictor -->
+<div class="panel full">
+<div class="panel-t">Matchup Predictor -- Enter Teams + Market Price</div>
+<div class="grid" style="gap:12px">
+<div style="position:relative">
+<label style="color:var(--dim);font-size:10px">TEAM A</label>
+<input id="pa" placeholder="Search team..." oninput="searchTeam('pa','sr-a')">
+<div class="search-results" id="sr-a"></div>
+</div>
+<div style="position:relative">
+<label style="color:var(--dim);font-size:10px">TEAM B</label>
+<input id="pb" placeholder="Search team..." oninput="searchTeam('pb','sr-b')">
+<div class="search-results" id="sr-b"></div>
+</div>
+<div>
+<label style="color:var(--dim);font-size:10px">FORMAT</label>
+<select id="bo"><option value="3">BO3</option><option value="5">BO5</option><option value="1">BO1</option></select>
+</div>
+<div>
+<label style="color:var(--dim);font-size:10px">MARKET PRICE TEAM A (optional)</label>
+<input id="mkt" type="number" step="0.01" min="0" max="1" placeholder="e.g. 0.55">
+</div>
+</div>
+<div style="margin-top:12px"><button onclick="runPredict()">ANALYZE MATCHUP</button></div>
+<div id="pred-result" style="margin-top:16px"></div>
+</div>
+
+<div class="grid">
+<!-- Ingest -->
+<div class="panel">
+<div class="panel-t">Ingest Result (Update Elo)</div>
+<div style="display:grid;gap:8px">
+<input id="ig-w" placeholder="Winner"><input id="ig-l" placeholder="Loser">
+<input id="ig-s" value="2-0" placeholder="Score">
+<select id="ig-bo"><option value="3">BO3</option><option value="5">BO5</option><option value="1">BO1</option></select>
+<button class="sec" onclick="ingest()">Update Elo</button>
+<div id="ig-r" style="font-size:11px"></div>
+</div>
+</div>
+<!-- Rankings -->
+<div class="panel">
+<div class="panel-t">Elo Rankings</div>
+<div id="rankings" style="max-height:400px;overflow-y:auto"><span style="color:var(--yel)">Loading...</span></div>
+</div>
+</div>
+
+<div class="footer">
+Data: Riot LoL Esports API (real-time) | bo3.gg (CS2 historical) | Auto-refresh every 60min via Vercel cron<br>
+Academic: Glickman (1999) | Angelini (2021) | Platt (1999) | Manski (2006) | Kelly (1956)<br>
+<a href="/api/upcoming">API: /api/upcoming</a> | <a href="/api/rankings">API: /api/rankings</a> |
+<a href="/api/predict?team_a=T1&team_b=Gen.G&bo=5">API: /api/predict</a>
+</div>
+</div>
+
+<script>
+let searchTimeout;
+async function searchTeam(inputId, resultsId) {
+clearTimeout(searchTimeout);
+const q = document.getElementById(inputId).value;
+const el = document.getElementById(resultsId);
+if (q.length < 2) { el.style.display='none'; return; }
+searchTimeout = setTimeout(async () => {
+const d = await fetch(`/api/search?q=${encodeURIComponent(q)}`).then(r=>r.json());
+if (!d.length) { el.style.display='none'; return; }
+el.innerHTML = d.slice(0,8).map(p =>
+`<div onclick="document.getElementById('${inputId}').value='${p.name}';document.getElementById('${resultsId}').style.display='none'">
+<strong>${p.name}</strong> <span style="color:var(--dim)">${p.elo} Elo | ${p.form} | ${p.league}</span></div>`
+).join('');
+el.style.display='block';
+}, 300);
+}
+document.addEventListener('click', e => {
+document.querySelectorAll('.search-results').forEach(el => { if(!el.contains(e.target)) el.style.display='none'; });
+});
+
+async function runPredict() {
+const a=document.getElementById('pa').value, b=document.getElementById('pb').value;
+const bo=document.getElementById('bo').value, mkt=document.getElementById('mkt').value;
+if(!a||!b) return;
+let url=`/api/predict?team_a=${encodeURIComponent(a)}&team_b=${encodeURIComponent(b)}&bo=${bo}`;
+if(mkt) url+=`&market_price_a=${mkt}`;
+const d=await fetch(url).then(r=>r.json());
+if(d.error){document.getElementById('pred-result').innerHTML=`<span style="color:var(--red)">${d.error}</span>`;return}
+let h=`<div class="grid"><div class="stat"><div class="v">${(d.p_a*100).toFixed(1)}%</div><div class="l">${d.team_a}</div></div>
+<div class="stat"><div class="v">${(d.p_b*100).toFixed(1)}%</div><div class="l">${d.team_b}</div></div></div>
+<div style="margin-top:8px;font-size:11px;color:var(--dim)">
+Elo: ${d.elo_a} vs ${d.elo_b} | Raw: ${(d.p_raw*100).toFixed(1)}% | Calibrated: ${(d.p_calibrated*100).toFixed(1)}%
+| BO${d.bo_type} correction: ${d.bo_correction>0?'+':''}${(d.bo_correction*100).toFixed(1)}%<br>
+Form: ${d.form_a} vs ${d.form_b} | WR: ${(d.win_rate_a*100).toFixed(0)}% vs ${(d.win_rate_b*100).toFixed(0)}%</div>`;
+if(d.market){const m=d.market;
+let sc,st;
+if(m.signal.startsWith('BUY')){sc='signal-buy';st=m.signal}
+else if(m.signal==='MANSKI'){sc='signal-manski';st='MANSKI -- '+m.reasoning}
+else{sc='signal-pass';st='PASS -- '+m.reasoning}
+h+=`<div class="signal-box ${sc}">${st}</div>
+<table style="margin-top:10px"><tr><th>Side</th><th>Model</th><th>Market</th><th>Edge</th><th>Kelly</th><th>Size</th></tr>
+<tr><td>${d.team_a}</td><td>${(d.p_a*100).toFixed(1)}%</td><td>${(m.price_a*100).toFixed(1)}%</td>
+<td class="${m.edge_a>0.03?'edge-pos':m.edge_a<-0.03?'edge-neg':''}">${m.edge_a>0?'+':''}${(m.edge_a*100).toFixed(1)}%</td>
+<td>${m.kelly_a>0?(m.kelly_a*100).toFixed(1)+'%':'-'}</td><td>${m.size_a>0?'$'+m.size_a.toFixed(0):'-'}</td></tr>
+<tr><td>${d.team_b}</td><td>${(d.p_b*100).toFixed(1)}%</td><td>${(m.price_b*100).toFixed(1)}%</td>
+<td class="${m.edge_b>0.03?'edge-pos':m.edge_b<-0.03?'edge-neg':''}">${m.edge_b>0?'+':''}${(m.edge_b*100).toFixed(1)}%</td>
+<td>${m.kelly_b>0?(m.kelly_b*100).toFixed(1)+'%':'-'}</td><td>${m.size_b>0?'$'+m.size_b.toFixed(0):'-'}</td></tr></table>`;
+if(m.manski_flag) h+=`<div class="warn">Manski [2006]: Edge >15% = model likely wrong. The market aggregates info you don't have.</div>`;}
+else h+=`<div style="margin-top:8px;font-size:11px;color:var(--dim)">Enter market price above for edge + Kelly.</div>`;
+document.getElementById('pred-result').innerHTML=h;
+}
+
+async function loadUpcoming(){
+document.getElementById('up-btn').textContent='Loading...';
+const d=await fetch('/api/upcoming').then(r=>r.json());
+document.getElementById('engine-info').textContent=`${d.engine.teams} teams | ${d.engine.matches} matches | Last refresh: ${d.engine.last_refresh?.slice(0,16)||'?'}`;
+const ms=d.matches;
+let h='<table><thead><tr><th>Time</th><th>Match</th><th>League</th><th>BO</th><th>State</th><th>Model</th><th>Elo</th></tr></thead><tbody>';
+for(const m of ms){
+const state=m.state==='inProgress'?`<span class="live">LIVE ${m.score_a}-${m.score_b}</span>`:'<span style="color:var(--dim)">sched</span>';
+const model=m.model_a?`${(m.model_a*100).toFixed(0)}/${(m.model_b*100).toFixed(0)}`:'-';
+const elo=m.elo_a?`${m.elo_a.toFixed(0)}/${m.elo_b.toFixed(0)}`:'-';
+const clickA=m.team_a, clickB=m.team_b;
+h+=`<tr style="cursor:pointer" onclick="document.getElementById('pa').value='${clickA}';document.getElementById('pb').value='${clickB}';document.getElementById('bo').value='${m.bo}';window.scrollTo({top:document.getElementById('pa').offsetTop-80,behavior:'smooth'})">
+<td>${(m.start||'').slice(11,16)}</td><td>${m.team_a} vs ${m.team_b}</td><td>${m.league}</td><td>${m.bo}</td><td>${state}</td><td>${model}</td><td style="color:var(--dim)">${elo}</td></tr>`;}
+h+='</tbody></table>';
+document.getElementById('upcoming').innerHTML=h;
+document.getElementById('up-btn').textContent='Refresh Matches';
+}
+
+async function loadRankings(){
+const d=await fetch('/api/rankings?limit=25').then(r=>r.json());
+let h='<table><thead><tr><th>#</th><th>Team</th><th>Elo</th><th>W-L</th><th>Form</th></tr></thead><tbody>';
+for(const t of d)h+=`<tr style="cursor:pointer" onclick="document.getElementById('pa').value='${t.name}'"><td>${t.rank}</td><td>${t.name}</td><td style="color:var(--cyan)">${t.elo}</td><td>${t.wins}-${t.losses}</td><td>${t.form.split('').map(c=>c==='W'?'<span style=\"color:var(--acc)\">W</span>':'<span style=\"color:var(--red)\">L</span>').join('')}</td></tr>`;
+h+='</tbody></table>';
+document.getElementById('rankings').innerHTML=h;
+}
+
+async function ingest(){
+const w=document.getElementById('ig-w').value,l=document.getElementById('ig-l').value;
+const s=document.getElementById('ig-s').value,bo=document.getElementById('ig-bo').value;
+if(!w||!l)return;
+const d=await fetch(`/api/ingest?winner=${encodeURIComponent(w)}&loser=${encodeURIComponent(l)}&score=${s}&bo=${bo}`).then(r=>r.json());
+document.getElementById('ig-r').innerHTML=d.error?`<span style="color:var(--red)">${d.error}</span>`:
+`<span style="color:var(--acc)">Done!</span> ${d.winner.name} (${d.winner.elo}) > ${d.loser.name} (${d.loser.elo})`;
+}
+
+loadUpcoming(); loadRankings();
+setInterval(loadUpcoming, 60000); // refresh upcoming every 60s
+</script>
+</body>
+</html>
