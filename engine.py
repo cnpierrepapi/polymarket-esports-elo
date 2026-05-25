@@ -334,7 +334,7 @@ def fetch_lol_history(pages: int = 40) -> list[dict]:
 
         try:
             r = requests.get(f"{RIOT_BASE}/getSchedule", params=params,
-                             headers=headers, timeout=15)
+                             headers=headers, timeout=8)
             if r.status_code != 200:
                 break
 
@@ -398,7 +398,7 @@ def fetch_lol_upcoming() -> list[dict]:
     headers = {"x-api-key": RIOT_API_KEY}
     try:
         r = requests.get(f"{RIOT_BASE}/getSchedule", params={"hl": "en-US"},
-                         headers=headers, timeout=15)
+                         headers=headers, timeout=8)
         if r.status_code != 200:
             return []
 

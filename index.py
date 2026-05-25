@@ -31,8 +31,8 @@ def get_engine():
     if _engine is None:
         try:
             from engine import fetch_lol_history, build_engine_from_matches
-            # Fast cold start: only 5 pages = ~400 matches
-            matches = fetch_lol_history(pages=5)
+            # Ultra-fast cold start: 2 pages = ~160 matches (Vercel 10s limit)
+            matches = fetch_lol_history(pages=2)
             _engine = build_engine_from_matches(matches, "lol")
             _engine_info = {
                 "teams": len(_engine.teams),
